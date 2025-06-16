@@ -1,25 +1,26 @@
+import logging
 import json
 import os
 import requests
+from datetime import datetime
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-# --- THÔNG TIN CỐ ĐỊNH CỦA BẠN ---
-TELEGRAM_TOKEN = "7692583121:AAH5anZKknZE_tPTqbpjh6hkt1H5likjDwQ"
-OPENROUTER_API_KEY = "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"
+# --- LẤY TỪ BIẾN MÔI TRƯỜNG ---
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 BOT_NAME = "mygpt_albot"
+
+# --- CẤU HÌNH ---
 VERSION = "v1.4"
 USAGE_LIMIT = 10
-
-# --- FILE LƯU TRỮ ---
 USAGE_TRACK_FILE = "usage.json"
 MEMORY_FILE_TEMPLATE = "memory_{}.json"
 
-# --- BỘ NHỚ TẠM ---
 conversation_memory = {}
 usage_counter = {}
 
-# --- HÀM LƯU/ĐỌC ---
+# --- HÀM LƯU / TẢI ---
 def load_usage():
     global usage_counter
     if os.path.exists(USAGE_TRACK_FILE):
@@ -35,13 +36,12 @@ def save_memory(chat_id):
     with open(mem_file, "w") as f:
         json.dump(conversation_memory.get(chat_id, []), f)
 
-# --- LỆNH /start ---
+# --- COMMANDS ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"🤖 Xin chào! Mình là bot AI `{BOT_NAME}` dùng OpenRouter API.\nGửi mình câu hỏi nhé!"
     )
 
-# --- LỆNH /help ---
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
     count = usage_counter.get(chat_id, 0)
@@ -53,7 +53,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "\n💬 Gửi câu hỏi bất kỳ để bot trả lời theo ngữ cảnh."
     )
 
-# --- LỆNH /reset ---
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
     save_memory(chat_id)
@@ -78,7 +77,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     conversation_memory[chat_id].append({"role": "user", "content": user_message})
 
-    # Gửi yêu cầu đến OpenRouter
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -97,13 +95,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply = data["choices"][0]["message"]["content"]
             conversation_memory[chat_id].append({"role": "assistant", "content": reply})
         else:
-            reply = f"❌ Lỗi OpenRouter: {data.get('error', data)}"
+            error_msg = data.get("message", "Không có phản hồi hợp lệ")
+            reply = f"❌ Lỗi OpenRouter: {error_msg}"
     except Exception as e:
         reply = f"❌ Lỗi: {str(e)}"
 
     await update.message.reply_text(reply)
 
-# --- KHỞI ĐỘNG BOT ---
+# --- KHỞI CHẠY ---
 if __name__ == '__main__':
     load_usage()
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
