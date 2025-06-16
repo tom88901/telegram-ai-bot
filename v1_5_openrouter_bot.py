@@ -11,8 +11,12 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 BOT_NAME = "mygpt_albot"
 
+# --- KIỂM TRA API KEY ---
+if not OPENROUTER_API_KEY:
+    raise ValueError("❌ Thiếu OPENROUTER_API_KEY - bạn cần đặt đúng biến môi trường trong Railway.")
+
 # --- CẤU HÌNH ---
-VERSION = "v1.4"
+VERSION = "v1.5"
 USAGE_LIMIT = 10
 USAGE_TRACK_FILE = "usage.json"
 MEMORY_FILE_TEMPLATE = "memory_{}.json"
@@ -81,7 +85,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://worker-production-c60d.up.railway.app"  # bắt buộc phải có với OpenRouter
+        "HTTP-Referer": "https://worker-production-c60d.up.railway.app"
     }
     payload = {
         "model": "openai/gpt-3.5-turbo",
@@ -96,10 +100,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply = data["choices"][0]["message"]["content"]
             conversation_memory[chat_id].append({"role": "assistant", "content": reply})
         else:
-            # Trả về lỗi chi tiết từ API
             reply = f"❌ Lỗi OpenRouter: Không có 'choices'. Phản hồi:\n{json.dumps(data, indent=2)}"
     except Exception as e:
-        reply = f"❌ Lỗi: {str(e)}"
+        reply = f"❌ Lỗi khi gọi API: {str(e)}"
 
     await update.message.reply_text(reply)
 
