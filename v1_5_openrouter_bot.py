@@ -120,8 +120,5 @@ if __name__ == '__main__':
     PORT = int(os.environ.get("PORT", "8080"))
     WEBHOOK_URL = f"https://worker-production-c60d.up.railway.app/{TELEGRAM_TOKEN}"
 
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        webhook_url=WEBHOOK_URL,
-    )
+    print(f"🤖 {VERSION} - Bot {BOT_NAME} đang chạy bằng polling...")
+    app.run_polling()
