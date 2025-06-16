@@ -4,155 +4,201 @@ import os
 import requests
 from datetime import datetime
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, MessageHandler,
+    ContextTypes, filters
+)
 
-# === CẤU HÌNH ===
-VERSION = "v2.3"
+# --- CẤU HÌNH ---
 BOT_NAME = "mygpt_albot"
-ADMIN_IDS = ["1202674202"]
+VERSION = "v2.3"
+USAGE_LIMIT = 10
+USAGE_TRACK_FILE = "usage.json"
+MEMORY_FILE_TEMPLATE = "memory_{}.json"
+ADMIN_ID = 1202674202
 
-# === BIẾN TOÀN CỤC ===
-conversation_memory = {}
-usage_counter = {}
+# --- DANH SÁCH API KEY ---
 api_keys = {
     "openrouter": [],
     "deepinfra": []
 }
-api_index = {
-    "openrouter": 0,
-    "deepinfra": 0
+api_status = {
+    "openrouter": [],
+    "deepinfra": []
 }
 
-# === HỖ TRỢ ===
-def is_admin(user_id: int) -> bool:
-    return str(user_id) in ADMIN_IDS
+# --- BỘ NHỚ ---
+conversation_memory = {}
+usage_counter = {}
 
-def load_keys():
-    if os.path.exists("apikeys.json"):
-        with open("apikeys.json", "r") as f:
-            data = json.load(f)
-            api_keys["openrouter"] = data.get("openrouter", [])
-            api_keys["deepinfra"] = data.get("deepinfra", [])
-            api_index["openrouter"] = 0
-            api_index["deepinfra"] = 0
-
-def save_keys():
-    with open("apikeys.json", "w") as f:
-        json.dump(api_keys, f)
-
-def get_valid_key(source: str):
-    keys = api_keys[source]
-    index = api_index[source]
-    for _ in range(len(keys)):
-        if index >= len(keys): index = 0
-        key = keys[index]
-        index += 1
-        api_index[source] = index
-        return key
-    return None
-
+# --- HỖ TRỢ ---
 def load_usage():
     global usage_counter
-    if os.path.exists("usage.json"):
-        with open("usage.json", "r") as f:
+    if os.path.exists(USAGE_TRACK_FILE):
+        with open(USAGE_TRACK_FILE, "r") as f:
             usage_counter = json.load(f)
 
 def save_usage():
-    with open("usage.json", "w") as f:
+    with open(USAGE_TRACK_FILE, "w") as f:
         json.dump(usage_counter, f)
 
-# === COMMAND ===
+def save_memory(chat_id):
+    mem_file = MEMORY_FILE_TEMPLATE.format(chat_id)
+    with open(mem_file, "w") as f:
+        json.dump(conversation_memory.get(chat_id, []), f)
+
+# --- CHỌN API ---
+def get_working_key(source):
+    for key in api_keys[source]:
+        if api_status[source][key]:
+            return key
+    return None
+
+def mark_key_invalid(source, key):
+    api_status[source][key] = False
+
+# --- COMMANDS ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"🤖 Xin chào! Mình là bot AI `{BOT_NAME}` v{VERSION}.
-Gửi mình câu hỏi nhé!")
+    await update.message.reply_text(f"🤖 Xin chào! Mình là bot AI `{BOT_NAME}` v{VERSION}. Gửi mình câu hỏi nhé!")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = str(update.effective_chat.id)
+    count = usage_counter.get(chat_id, 0)
     await update.message.reply_text(
-        "/start - Khởi động lại bot
-"
-        "/help - Xem hướng dẫn
-"
-        "/reset - Xoá bộ nhớ và đếm lượt
-"
-        "/see - Xem trạng thái API
-"
-        "/error - Kiểm tra key lỗi (Admin)
-"
-        "/delete - Xoá key lỗi (Admin)
-"
+        f"📚 Bot phiên bản: {VERSION}\nBạn đã sử dụng: {count} lần\n\n"
+        "/start - Khởi động lại bot\n"
+        "/help - Xem hướng dẫn\n"
+        "/reset - Xoá bộ nhớ\n"
+        "/see - Xem trạng thái key\n"
+        "/error - Danh sách key lỗi (chỉ admin)\n"
+        "/delete - Xoá key lỗi (chỉ admin)\n"
+        "/addkey - Thêm key API mới (chỉ admin)"
     )
 
 async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
+    save_memory(chat_id)
     conversation_memory[chat_id] = []
     usage_counter[chat_id] = 0
     save_usage()
-    await update.message.reply_text("✅ Đã reset bộ nhớ.")
+    await update.message.reply_text("✅ Đã reset hội thoại và lượt sử dụng.")
 
-async def see(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    info = "📊 Trạng thái API:
-"
-    for source, keys in api_keys.items():
-        info += f"- {source.upper()}: {len(keys)} key
-"
-    await update.message.reply_text(info)
+# --- TÍNH NĂNG ADMIN ---
+async def error_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("🚫 Bạn không có quyền sử dụng lệnh này.")
+        return
+    msg = "\n".join([
+        f"🔑 {src.upper()}: {', '.join([k for k, ok in api_status[src].items() if not ok]) or 'Không có lỗi'}"
+        for src in api_keys
+    ])
+    await update.message.reply_text(f"📛 Danh sách key lỗi:\n{msg}")
 
-async def error(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        return await update.message.reply_text("⛔ Không có quyền.")
-    await update.message.reply_text("📛 Kiểm tra key lỗi chưa được tích hợp hoàn toàn.")
+async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("🚫 Bạn không có quyền sử dụng lệnh này.")
+        return
+    for src in api_keys:
+        api_keys[src] = [k for k in api_keys[src] if api_status[src][k]]
+    await update.message.reply_text("🗑️ Đã xoá tất cả key lỗi.")
 
-async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        return await update.message.reply_text("⛔ Không có quyền.")
-    await update.message.reply_text("🗑️ Tính năng xoá key lỗi sẽ cập nhật sau.")
+async def see_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = "\n".join([
+        f"🔍 {src.upper()}: {len([k for k in api_status[src] if api_status[src][k]])} đang hoạt động / {len(api_status[src])} tổng"
+        for src in api_keys
+    ])
+    await update.message.reply_text(f"🔐 Trạng thái API Key:\n{msg}")
 
-# === CHAT ===
+async def addkey_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("🚫 Bạn không có quyền sử dụng lệnh này.")
+        return
+    try:
+        src, newkey = context.args[0], context.args[1]
+        src = src.lower()
+        if src not in api_keys:
+            await update.message.reply_text("❌ Nguồn không hợp lệ (openrouter/deepinfra)")
+            return
+        if newkey not in api_keys[src]:
+            api_keys[src].append(newkey)
+            api_status[src][newkey] = True
+            await update.message.reply_text("✅ Đã thêm key thành công.")
+        else:
+            await update.message.reply_text("⚠️ Key đã tồn tại.")
+    except:
+        await update.message.reply_text("❌ Sai cú pháp. Dùng: /addkey [nguồn] [apikey]")
+
+# --- TRẢ LỜI ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
-    message = update.message.text
+    user_message = update.message.text
+
     usage_counter[chat_id] = usage_counter.get(chat_id, 0) + 1
+    if usage_counter[chat_id] > USAGE_LIMIT:
+        await update.message.reply_text("⚠️ Bạn đã dùng hết lượt trong ngày (10).")
+        return
     save_usage()
 
-    # Lấy key xoay tua
-    source = "openrouter"
-    key = get_valid_key(source)
-    if not key:
-        await update.message.reply_text("❌ Hết API key. Vui lòng đợi admin cập nhật.")
-        return
+    if chat_id not in conversation_memory:
+        conversation_memory[chat_id] = []
+    conversation_memory[chat_id].append({"role": "user", "content": user_message})
 
-    headers = {
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "model": "openai/gpt-3.5-turbo",
-        "messages": [{"role": "user", "content": message}]
-    }
+    for source in ["openrouter", "deepinfra"]:
+        key = get_working_key(source)
+        if not key:
+            continue
 
-    try:
-        res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
-        data = res.json()
-        if "choices" in data:
-            reply = data["choices"][0]["message"]["content"]
-        else:
-            reply = f"❌ Lỗi API: {data}"
-    except Exception as e:
-        reply = f"❌ Lỗi xử lý: {e}"
+        headers = {
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        }
+        if source == "openrouter":
+            headers["HTTP-Referer"] = "https://worker-production.up.railway.app"
+            url = "https://openrouter.ai/api/v1/chat/completions"
+            model = "openai/gpt-3.5-turbo"
+        elif source == "deepinfra":
+            url = "https://api.deepinfra.com/v1/openai/chat/completions"
+            model = "meta-llama/Meta-Llama-3-8B-Instruct"
 
-    await update.message.reply_text(reply)
+        payload = {"model": model, "messages": conversation_memory[chat_id]}
 
-# === MAIN ===
+        try:
+            response = requests.post(url, headers=headers, json=payload)
+            data = response.json()
+
+            if "choices" in data:
+                reply = data["choices"][0]["message"]["content"]
+                conversation_memory[chat_id].append({"role": "assistant", "content": reply})
+                await update.message.reply_text(reply)
+                return
+            else:
+                mark_key_invalid(source, key)
+        except:
+            mark_key_invalid(source, key)
+
+    await update.message.reply_text("❌ Tất cả API key đã hết hạn. Vui lòng chờ admin cập nhật.")
+
+# --- MAIN ---
 if __name__ == '__main__':
-    load_keys()
     load_usage()
+
+    # Cấu hình mặc định key khởi tạo nếu cần (có thể rút gọn hoặc load từ env)
+    api_keys["openrouter"] = [os.getenv("OPENROUTER_API_KEY")]
+    api_keys["deepinfra"] = [os.getenv("DEEPINFRA_API_KEY")]
+
+    for src in api_keys:
+        for k in api_keys[src]:
+            api_status[src][k] = True
+
     app = ApplicationBuilder().token(os.getenv("TELEGRAM_TOKEN")).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("reset", reset))
-    app.add_handler(CommandHandler("see", see))
-    app.add_handler(CommandHandler("error", error))
-    app.add_handler(CommandHandler("delete", delete))
+    app.add_handler(CommandHandler("see", see_command))
+    app.add_handler(CommandHandler("error", error_command))
+    app.add_handler(CommandHandler("delete", delete_command))
+    app.add_handler(CommandHandler("addkey", addkey_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print(f"🤖 Bot {BOT_NAME} v{VERSION} đang chạy polling...")
+
+    print(f"🤖 {VERSION} - Bot {BOT_NAME} đang chạy...")
     app.run_polling()
