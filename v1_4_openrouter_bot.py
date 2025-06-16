@@ -81,6 +81,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
+        "HTTP-Referer": "https://worker-production-c60d.up.railway.app"  # bắt buộc phải có với OpenRouter
     }
     payload = {
         "model": "openai/gpt-3.5-turbo",
@@ -95,8 +96,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply = data["choices"][0]["message"]["content"]
             conversation_memory[chat_id].append({"role": "assistant", "content": reply})
         else:
-            error_msg = data.get("message", "Không có phản hồi hợp lệ")
-            reply = f"❌ Lỗi OpenRouter: {error_msg}"
+            # Trả về lỗi chi tiết từ API
+            reply = f"❌ Lỗi OpenRouter: Không có 'choices'. Phản hồi:\n{json.dumps(data, indent=2)}"
     except Exception as e:
         reply = f"❌ Lỗi: {str(e)}"
 
