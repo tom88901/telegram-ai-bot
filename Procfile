@@ -1,1 +1,1 @@
-worker: python v1_5_openrouter_bot.py
+worker: python3 bot_v2_3.py
