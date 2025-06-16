@@ -27,7 +27,9 @@ chmod +x start.sh
 ## Lệnh hỗ trợ:
 - `/start`, `/help`, `/reset`, `/see`
 - Lệnh quản trị: `/error`, `/delete`, `/addkey`, `/dashboard`
-
+## Nguồn key
+https://openrouter.ai/
+https://deepinfra.com/
 ---
 
 **Version**: v2.3
