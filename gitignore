@@ -1,0 +1,30 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Virtual environment
+venv/
+ENV/
+env/
+.venv/
+
+# API usage memory files
+usage.json
+memory_*.json
+
+# IDE/editor settings
+.vscode/
+.idea/
