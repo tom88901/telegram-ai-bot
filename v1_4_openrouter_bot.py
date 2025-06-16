@@ -16,7 +16,7 @@ if not OPENROUTER_API_KEY:
     raise ValueError("❌ Thiếu OPENROUTER_API_KEY - bạn cần đặt đúng biến môi trường trong Railway.")
 
 # --- CẤU HÌNH ---
-VERSION = "v1.5"
+VERSION = "v1.4"
 USAGE_LIMIT = 10
 USAGE_TRACK_FILE = "usage.json"
 MEMORY_FILE_TEMPLATE = "memory_{}.json"
