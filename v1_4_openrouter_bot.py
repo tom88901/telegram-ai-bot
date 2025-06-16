@@ -76,7 +76,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Authorization": "Bearer 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",
         "Content-Type": "application/json",
     }
     payload = {
@@ -89,12 +89,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data = response.json()
         print("🔍 DEBUG:", json.dumps(data, indent=2, ensure_ascii=False))
 
-        if "choices" in data:
+        if "choices" in data and len(data["choices"]) > 0:
             reply = data["choices"][0]["message"]["content"]
             conversation_memory[chat_id].append({"role": "assistant", "content": reply})
         else:
-            error_msg = data.get("error", "Không có phản hồi hợp lệ")
-            reply = f"❌ Lỗi OpenRouter: {error_msg}"
+            reply = f"❌ Lỗi OpenRouter: {data}"
     except Exception as e:
         reply = f"❌ Lỗi: {str(e)}"
 
