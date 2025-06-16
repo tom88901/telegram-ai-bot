@@ -102,7 +102,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(reply)
 
-# --- KHỞI CHẠY ---
+# --- KHỞI CHẠY QUA WEBHOOK ---
 if __name__ == '__main__':
     load_usage()
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
@@ -111,5 +111,13 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("reset", reset))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print(f"🤖 {VERSION} - Bot {BOT_NAME} đang chạy...")
-    app.run_polling()
+    print(f"🤖 {VERSION} - Bot {BOT_NAME} đang chạy qua webhook...")
+
+    PORT = int(os.environ.get("PORT", "8080"))
+    WEBHOOK_URL = f"https://worker-production-c60d.up.railway.app/{TELEGRAM_TOKEN}"
+
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        webhook_url=WEBHOOK_URL,
+    )
