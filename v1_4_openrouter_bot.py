@@ -6,8 +6,11 @@ from datetime import datetime
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "dán_token_telegram_ở_đây_nếu_test")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "dán_api_key_openrouter")
+# --- THÔNG TIN CỦA BẠN ---
+TELEGRAM_TOKEN = "7692583121:AAH5anZKknZE_tPTqbpjh6hkt1H5likjDwQ"
+OPENROUTER_API_KEY = "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"
+BOT_NAME = "mygpt_albot"
+# --------------------------
 
 VERSION = "v1.4"
 USAGE_LIMIT = 10
@@ -34,7 +37,7 @@ def save_memory(chat_id):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        f"🤖 Xin chào! Mình là bot AI `mygpt_albot` dùng OpenRouter API.\nGửi mình câu hỏi nhé!"
+        f"🤖 Xin chào! Mình là bot AI `{BOT_NAME}` dùng OpenRouter API.\nGửi mình câu hỏi nhé!"
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -56,4 +59,54 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_usage()
     await update.message.reply_text("✅ Bộ nhớ hội thoại đã được xoá và lưu lại.")
 
-async def handle_message(update: Update,
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = str(update.effective_chat.id)
+    user_message = update.message.text
+
+    usage_counter[chat_id] = usage_counter.get(chat_id, 0) + 1
+    if usage_counter[chat_id] > USAGE_LIMIT:
+        await update.message.reply_text("⚠️ Bạn đã dùng hết lượt trong ngày (10).")
+        return
+    save_usage()
+
+    if chat_id not in conversation_memory:
+        conversation_memory[chat_id] = []
+
+    conversation_memory[chat_id].append({"role": "user", "content": user_message})
+
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": "openai/gpt-3.5-turbo",
+        "messages": conversation_memory[chat_id],
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        data = response.json()
+        print("🔍 DEBUG:", json.dumps(data, indent=2, ensure_ascii=False))
+
+        if "choices" in data:
+            reply = data["choices"][0]["message"]["content"]
+            conversation_memory[chat_id].append({"role": "assistant", "content": reply})
+        else:
+            error_msg = data.get("error", "Không có phản hồi hợp lệ")
+            reply = f"❌ Lỗi OpenRouter: {error_msg}"
+    except Exception as e:
+        reply = f"❌ Lỗi: {str(e)}"
+
+    await update.message.reply_text(reply)
+
+if __name__ == '__main__':
+    load_usage()
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("reset", reset))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    print(f"🤖 {VERSION} - Bot {BOT_NAME} đang chạy...")
+    app.run_polling()
