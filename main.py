@@ -16,7 +16,7 @@ from model_selection import get_model_keyboard
 from api_logging import log_api
 from key_manager import (
     load_keys, save_keys, add_key, delete_key,
-    get_error_keys, get_key_status
+    get_error_keys, get_key_status, reset_all_keys
 )
 
 BOT_NAME = "mygpt_albot"
@@ -60,6 +60,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "- /addkey [nguồn] [apikey] (admin): Thêm API key\n"
         "- /delete [nguồn] [apikey] (admin): Xoá key\n"
         "- /error (admin): Danh sách key lỗi\n"
+        "- /resetkey (admin): Đặt lại trạng thái tất cả key về hoạt động\n"
         "- /help: Xem lại hướng dẫn\n"
         "⏱️ Mỗi user tối đa 10 lượt/ngày (admin có thể tăng/giảm)\n"
         "Liên hệ admin nếu cần thêm quyền!"
@@ -180,6 +181,13 @@ async def error_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = "\n".join(get_error_keys())
     await update.message.reply_text(msg)
 
+async def resetkey_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("🚫 Bạn không có quyền sử dụng lệnh này.")
+        return
+    reset_all_keys()
+    await update.message.reply_text("✅ Đã reset trạng thái tất cả key về hoạt động!")
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat_id = str(user.id)
@@ -202,9 +210,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     model = profile.get("selected_model", "openrouter")
     messages = [{"role": "user", "content": text}]
-
-    # Luân phiên gọi từng nguồn
     sources = ["openrouter", "deepinfra"] if model == "openrouter" else ["deepinfra", "openrouter"]
+
+    last_error_msg = None
     for src in sources:
         try:
             reply, usage = call_ai(src, messages)
@@ -215,10 +223,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(reply)
             return
         except Exception as e:
+            last_error_msg = str(e)
             log_api(chat_id, username, src, text, "error")
             continue
 
-    await update.message.reply_text("❌ Tất cả API key đã hết hạn hoặc lỗi. Vui lòng liên hệ admin!")
+    await update.message.reply_text(f"❌ Tất cả API key đã hết hạn hoặc lỗi. {last_error_msg or ''}\nNếu bạn là admin, hãy dùng /resetkey để đặt lại trạng thái key, hoặc /addkey để thêm key mới!")
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -243,6 +252,7 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("addkey", addkey_command))
     app.add_handler(CommandHandler("delete", delete_command))
     app.add_handler(CommandHandler("error", error_command))
+    app.add_handler(CommandHandler("resetkey", resetkey_command))
     app.add_handler(CallbackQueryHandler(model_callback, pattern="^model_"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
