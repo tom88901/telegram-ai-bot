@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import requests
+import re
 from datetime import datetime
 from telegram import Update
 from telegram.ext import (
@@ -15,9 +16,7 @@ VERSION = "v1.0"
 USAGE_LIMIT = 10
 USAGE_TRACK_FILE = "usage.json"
 MEMORY_FILE_TEMPLATE = "memory_{}.json"
-
-# Đọc ADMIN_ID từ biến môi trường để tránh lộ thông tin nhạy cảm
-ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))  # Lưu ý: cần set đúng ENV trên Railway hoặc local
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
 # --- CẤU HÌNH API KEY ---
 api_keys = {
@@ -53,7 +52,6 @@ def save_memory(chat_id):
     with open(mem_file, "w") as f:
         json.dump(conversation_memory.get(chat_id, []), f)
 
-# --- QUẢN LÝ API KEY ---
 def get_working_key(source):
     for key in api_keys[source]:
         if api_status[source].get(key, False):
@@ -62,6 +60,87 @@ def get_working_key(source):
 
 def mark_key_invalid(source, key):
     api_status[source][key] = False
+
+# === 1. HÀM LẤY CHƯƠNG TRUYỆN FANQIENOVEL ===
+def get_fanqie_chapter(chapter_url):
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+    }
+    m = re.search(r'/chapter/(\d+)', chapter_url)
+    if not m:
+        return None, "❌ Link chương không hợp lệ! Vui lòng gửi đúng link fanqienovel."
+    chapter_id = m.group(1)
+    api_url = f"https://api.api-fanqienovel.sunianyun.live/info?id={chapter_id}"
+    try:
+        r = requests.get(api_url, headers=headers, timeout=10)
+        data = r.json()
+        raw_text = data['data'].get('content', '')
+        if not raw_text:
+            return None, "❌ Không lấy được nội dung chương. Có thể chương này đã bị giới hạn."
+        return raw_text, None
+    except Exception as e:
+        return None, f"❌ Lỗi khi lấy nội dung chương: {e}"
+
+# === 2. HÀM DỊCH CHƯƠNG BẰNG AI BOT ===
+def translate_with_bot_ai(raw_text):
+    prompt = "Dịch đoạn văn sau từ tiếng Trung sang tiếng Việt. Giữ nguyên nghĩa, văn phong tự nhiên:\n\n" + raw_text
+    for src in ["openrouter", "deepinfra"]:
+        key = get_working_key(src)
+        if not key:
+            continue
+        headers = {
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        }
+        if src == "openrouter":
+            headers["HTTP-Referer"] = "https://your-app-domain"
+            url = "https://openrouter.ai/api/v1/chat/completions"
+            model = "openai/gpt-3.5-turbo"
+        elif src == "deepinfra":
+            url = "https://api.deepinfra.com/v1/openai/chat/completions"
+            model = "meta-llama/Meta-Llama-3-8B-Instruct"
+
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "Bạn là một dịch giả chuyên nghiệp."},
+                {"role": "user", "content": prompt}
+            ],
+            "max_tokens": 2048,
+            "temperature": 0.2
+        }
+
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=30)
+            data = resp.json()
+            if "choices" in data and data["choices"]:
+                return data["choices"][0]["message"]["content"]
+            else:
+                mark_key_invalid(src, key)
+        except Exception as e:
+            mark_key_invalid(src, key)
+    return "❌ Lỗi dịch. Tất cả key đã hết hoặc gặp sự cố."
+
+# === 3. HANDLER NHẬN LINK CHƯƠNG & DỊCH TRẢ VỀ TELEGRAM ===
+async def handle_fanqie_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message.text.strip()
+    if "fanqienovel.com/chapter/" in msg:
+        await update.message.reply_text("🔍 Đang lấy nội dung chương truyện...")
+        raw_text, err = get_fanqie_chapter(msg)
+        if err:
+            await update.message.reply_text(err)
+            return
+        await update.message.reply_text("🤖 Đang dịch sang tiếng Việt, vui lòng chờ...")
+        vi_text = translate_with_bot_ai(raw_text)
+        max_len = 4000
+        if len(vi_text) <= max_len:
+            await update.message.reply_text("📖 Bản dịch:\n" + vi_text)
+        else:
+            for i in range(0, len(vi_text), max_len):
+                await update.message.reply_text(vi_text[i:i+max_len])
+        return
+    else:
+        return False
 
 # --- LỆNH CƠ BẢN ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -212,6 +291,11 @@ if __name__ == '__main__':
         exit(1)
 
     app = ApplicationBuilder().token(telegram_token).build()
+
+    # --- ĐĂNG KÝ HANDLER FANQIE DỊCH TRUYỆN (ưu tiên trước AI chat) ---
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_fanqie_link))
+
+    # --- ĐĂNG KÝ HANDLER CÁC COMMAND ---
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("reset", reset))
@@ -219,6 +303,8 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("error", error_command))
     app.add_handler(CommandHandler("delete", delete_command))
     app.add_handler(CommandHandler("addkey", addkey_command))
+
+    # --- HANDLER CHAT AI CHUNG (xử lý mọi text khác) ---
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print(f"🤖 {VERSION} - Bot {BOT_NAME} đã khởi động!")
