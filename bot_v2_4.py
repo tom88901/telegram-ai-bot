@@ -12,7 +12,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENROUTER_API_KEYS = os.getenv("OPENROUTER_API_KEYS", "").split(",")
 DEEPINFRA_API_KEYS = os.getenv("DEEPINFRA_API_KEYS", "").split(",")
 ADMIN_IDS = list(map(int, os.getenv("ADMIN_IDS", "").split(",")))
-BOT_NAME = "mygpt_albot"
+BOT_NAME = "AL2.4"
 
 # --- CẤU HÌNH ---
 VERSION = "v2.4"
