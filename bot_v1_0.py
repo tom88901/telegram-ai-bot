@@ -119,7 +119,11 @@ async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🚫 Bạn không có quyền sử dụng lệnh này.")
         return
     for src in api_keys:
-        api_keys[src] = [k for k in api_keys[src] if api_status[src].get(k, False)]
+        # Giữ lại những key vẫn còn hoạt động (không phải key lỗi)
+        valid_keys = [k for k in api_keys[src] if api_status[src].get(k, False)]
+        api_keys[src] = valid_keys
+        # Xóa key lỗi khỏi api_status để /see hiện đúng tổng số key còn lại
+        api_status[src] = {k: api_status[src][k] for k in valid_keys}
     await update.message.reply_text("🗑️ Đã xoá tất cả key lỗi.")
 
 async def see_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
