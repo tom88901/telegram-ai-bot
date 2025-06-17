@@ -1,25 +1,24 @@
 import json
 import os
-from datetime import datetime
 
 PROFILE_FILE = "data/user_profile.json"
-DEFAULT_MODEL = "gpt-3.5-turbo"
+DEFAULT_MODEL = "openrouter"   # Mặc định là openrouter
 
 user_profiles = {}
 
 def load_profiles():
     global user_profiles
-    if os.path.exists(PROFILE_FILE):
-        with open(PROFILE_FILE, "r", encoding="utf-8") as f:
-            try:
+    try:
+        if os.path.exists(PROFILE_FILE):
+            with open(PROFILE_FILE, "r", encoding="utf-8") as f:
                 content = f.read().strip()
                 if content == "":
                     user_profiles = {}
                 else:
                     user_profiles = json.loads(content)
-            except Exception:
-                user_profiles = {}
-    else:
+        else:
+            user_profiles = {}
+    except Exception:
         user_profiles = {}
 
 def save_profiles():
