@@ -66,10 +66,11 @@ def get_fanqie_chapter(chapter_url):
     headers = {
         "User-Agent": "Mozilla/5.0",
     }
-    m = re.search(r'/chapter/(\d+)', chapter_url)
+    # Chấp nhận cả /chapter/ID và /reader/ID
+    m = re.search(r'/(chapter|reader)/(\d+)', chapter_url)
     if not m:
         return None, "❌ Link chương không hợp lệ! Vui lòng gửi đúng link fanqienovel."
-    chapter_id = m.group(1)
+    chapter_id = m.group(2)
     api_url = f"https://api.api-fanqienovel.sunianyun.live/info?id={chapter_id}"
     try:
         r = requests.get(api_url, headers=headers, timeout=10)
