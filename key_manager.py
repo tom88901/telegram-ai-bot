@@ -10,12 +10,25 @@ api_keys = {}
 api_status = {}
 
 def load_keys():
+    env_var = {
+        "openrouter": "OPENROUTER_API",
+        "deepinfra": "DEEPINFRA_API"
+    }
     for src in KEY_FILES:
         if os.path.exists(KEY_FILES[src]):
             with open(KEY_FILES[src], "r") as f:
                 api_keys[src] = json.load(f)
         else:
-            api_keys[src] = []
+            # Nếu chưa có file, thử lấy từ biến môi trường để tạo mới
+            env_key = os.getenv(env_var[src])
+            if env_key and env_key.strip():
+                api_keys[src] = [env_key.strip()]
+                # Ghi ra file luôn để các lần sau sử dụng
+                with open(KEY_FILES[src], "w") as f:
+                    json.dump(api_keys[src], f)
+            else:
+                api_keys[src] = []
+        # Cập nhật trạng thái key
         api_status[src] = {k: True for k in api_keys[src]}
 
 def save_keys():
