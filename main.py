@@ -1,7 +1,6 @@
 import os
 import logging
 import datetime
-import json
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
@@ -15,9 +14,13 @@ from user_profile import (
 from api_call import call_ai
 from model_selection import get_model_keyboard
 from api_logging import log_api
+from key_manager import (
+    load_keys, save_keys, add_key, delete_key,
+    get_error_keys, get_key_status
+)
 
 BOT_NAME = "mygpt_albot"
-VERSION = "v1.1"
+VERSION = "v1.2"
 USAGE_LIMIT = 10
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 USAGE_TRACK_FILE = "data/usage.json"
@@ -26,12 +29,14 @@ usage_counter = {}
 def load_usage():
     global usage_counter
     if os.path.exists(USAGE_TRACK_FILE):
+        import json
         with open(USAGE_TRACK_FILE, "r") as f:
             usage_counter = json.load(f)
     else:
         usage_counter = {}
 
 def save_usage():
+    import json
     with open(USAGE_TRACK_FILE, "w") as f:
         json.dump(usage_counter, f)
 
@@ -49,10 +54,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "- /start: Khởi động lại bot\n"
         "- /reset: Xoá bộ nhớ hội thoại & lượt dùng\n"
         "- /model: Chọn nguồn AI bạn muốn dùng (OpenRouter/DeepInfra)\n"
-        "- /see: Xem thống kê, top user/model\n"
+        "- /see: Xem trạng thái key hiện tại\n"
         "- /userprofile [@username|id] (admin): Xem hồ sơ user\n"
         "- /useredit [@username|id] [field] [value] (admin): Sửa hồ sơ user\n"
-        "- /addkey, /delete, /error (admin): Quản lý API key nếu có\n"
+        "- /addkey [nguồn] [apikey] (admin): Thêm API key\n"
+        "- /delete [nguồn] [apikey] (admin): Xoá key\n"
+        "- /error (admin): Danh sách key lỗi\n"
         "- /help: Xem lại hướng dẫn\n"
         "⏱️ Mỗi user tối đa 10 lượt/ngày (admin có thể tăng/giảm)\n"
         "Liên hệ admin nếu cần thêm quyền!"
@@ -67,18 +74,8 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Đã reset hội thoại và lượt sử dụng cho bạn.")
 
 async def see_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    total_users = len(user_profiles)
-    topu = top_users()
-    topm = top_models()
-    txt = f"**Thống kê hệ thống:**\n"
-    txt += f"- Tổng user: {total_users}\n"
-    txt += "- Top user:\n"
-    for i, (uid, p) in enumerate(topu):
-        txt += f"  {i+1}. {p['username'] or uid}: {p.get('usage_count',0)} lượt\n"
-    txt += "- Top model:\n"
-    for m, cnt in topm:
-        txt += f"  {m}: {cnt} user chọn\n"
-    await update.message.reply_text(txt, parse_mode="Markdown")
+    msg = "\n".join(get_key_status())
+    await update.message.reply_text(msg)
 
 async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -154,6 +151,35 @@ async def useredit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_profile(uid, **{field: value})
     await update.message.reply_text(f"✅ Đã cập nhật user {uid} ({field}={value})")
 
+async def addkey_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("🚫 Bạn không có quyền sử dụng lệnh này.")
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text("Cú pháp: /addkey [nguồn] [apikey]")
+        return
+    src, key = context.args[0].lower(), context.args[1]
+    ok, msg = add_key(src, key)
+    await update.message.reply_text(msg)
+
+async def delete_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("🚫 Bạn không có quyền sử dụng lệnh này.")
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text("Cú pháp: /delete [nguồn] [apikey]")
+        return
+    src, key = context.args[0].lower(), context.args[1]
+    ok, msg = delete_key(src, key)
+    await update.message.reply_text(msg)
+
+async def error_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("🚫 Bạn không có quyền sử dụng lệnh này.")
+        return
+    msg = "\n".join(get_error_keys())
+    await update.message.reply_text(msg)
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat_id = str(user.id)
@@ -177,22 +203,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     model = profile.get("selected_model", "openrouter")
     messages = [{"role": "user", "content": text}]
 
-    try:
-        reply, usage = call_ai(model, messages)
-        tokens = usage.get("total_tokens", 0)
-        profile['api_count'] = profile.get('api_count', 0) + 1
-        save_profiles()
-        log_api(chat_id, username, model, text, "ok", tokens=tokens)
-        await update.message.reply_text(reply)
-    except Exception as e:
-        log_api(chat_id, username, model, text, "error")
-        await update.message.reply_text(f"❌ Lỗi gọi AI API: {e}")
+    # Luân phiên gọi từng nguồn
+    sources = ["openrouter", "deepinfra"] if model == "openrouter" else ["deepinfra", "openrouter"]
+    for src in sources:
+        try:
+            reply, usage = call_ai(src, messages)
+            tokens = usage.get("total_tokens", 0)
+            profile['api_count'] = profile.get('api_count', 0) + 1
+            save_profiles()
+            log_api(chat_id, username, src, text, "ok", tokens=tokens)
+            await update.message.reply_text(reply)
+            return
+        except Exception as e:
+            log_api(chat_id, username, src, text, "error")
+            continue
+
+    await update.message.reply_text("❌ Tất cả API key đã hết hạn hoặc lỗi. Vui lòng liên hệ admin!")
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     os.makedirs("data", exist_ok=True)
     load_profiles()
     load_usage()
+    load_keys()
 
     token = os.getenv("TELEGRAM_TOKEN")
     if not token:
@@ -207,6 +240,9 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("model", model_command))
     app.add_handler(CommandHandler("userprofile", userprofile_command))
     app.add_handler(CommandHandler("useredit", useredit_command))
+    app.add_handler(CommandHandler("addkey", addkey_command))
+    app.add_handler(CommandHandler("delete", delete_command))
+    app.add_handler(CommandHandler("error", error_command))
     app.add_handler(CallbackQueryHandler(model_callback, pattern="^model_"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
