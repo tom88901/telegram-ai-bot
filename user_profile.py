@@ -11,7 +11,14 @@ def load_profiles():
     global user_profiles
     if os.path.exists(PROFILE_FILE):
         with open(PROFILE_FILE, "r", encoding="utf-8") as f:
-            user_profiles = json.load(f)
+            try:
+                content = f.read().strip()
+                if content == "":
+                    user_profiles = {}
+                else:
+                    user_profiles = json.loads(content)
+            except Exception:
+                user_profiles = {}
     else:
         user_profiles = {}
 
