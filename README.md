@@ -55,8 +55,6 @@ Bot AI Telegram trả lời thông minh, hỗ trợ đa nguồn API, quản lý 
 
 ### 2. Cài đặt & cấu hình
 ```bash
-git clone https://github.com/[tài-khoản]/[repo-của-bạn].git
-cd [repo-của-bạn]
 pip install python-telegram-bot requests
 ---
 
