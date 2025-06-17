@@ -1,36 +1,40 @@
-# Multi-AI Telegram Bot 🤖
+# 🤖 Multi-AI Telegram Bot v1.0
 
-Bot Telegram sử dụng nhiều API như OpenRouter và DeepInfra để cung cấp trả lời thông minh, có khả năng:
-- Xoay tua API key
-- Cảnh báo khi hết key
-- Lệnh quản trị viên riêng biệt
-- Theo dõi trạng thái key
+Bot AI Telegram trả lời thông minh, hỗ trợ đa nguồn API, quản lý key linh hoạt, giới hạn lượt dùng mỗi user, phân quyền admin, chuẩn hóa cho deploy Railway hoặc VPS.
 
-## Triển khai
-
-### 1. Tạo biến môi trường:
-- `TELEGRAM_TOKEN`: Token của bot Telegram
-- `OPENROUTER_API_KEYS`: Danh sách key OpenRouter, cách nhau bởi dấu phẩy
-- `DEEPINFRA_API_KEYS`: Danh sách key DeepInfra
-- `ADMIN_IDS`: ID của quản trị viên (phân cách bằng dấu phẩy)
-
-### 2. Railway
-- Kết nối GitHub repo chứa code
-- Railway sẽ tự chạy `Procfile`
-
-### 3. Chạy thủ công:
-```bash
-chmod +x start.sh
-./start.sh
-```
-
-## Lệnh hỗ trợ:
-- `/start`, `/help`, `/reset`, `/see`
-- Lệnh quản trị: `/error`, `/delete`, `/addkey`, `/dashboard`
-## Nguồn key
-https://openrouter.ai/
-https://deepinfra.com/
 ---
-#Web py online
-https://railway.com/
-**Version**: v2.3
+
+## 🚀 **Tính năng bản v1.0**
+- Chat AI tự động (xoay tua nhiều API key)
+- Giới hạn lượt sử dụng mỗi user mỗi ngày
+- Lưu hội thoại riêng từng người dùng
+- Quản lý, thêm/xóa key API (chỉ admin)
+- Cảnh báo khi hết key
+- Phân quyền admin (ẩn thông tin, bảo mật)
+- Sẵn sàng nâng cấp lên các bản tiếp theo
+
+---
+
+## 🌐 **Nguồn lấy API key miễn phí**
+- [OpenRouter (lấy key miễn phí)](https://openrouter.ai/)
+- [DeepInfra (lấy key miễn phí)](https://deepinfra.com/)
+
+## ☁️ **Nền tảng deploy bot Telegram**
+- [Railway (deploy siêu nhanh)](https://railway.com/)
+
+---
+
+## 🛠️ **Hướng dẫn triển khai**
+
+### 1. Chuẩn bị
+- Python 3.10+
+- Một tài khoản Telegram
+- Token bot Telegram (lấy ở [@BotFather](https://t.me/BotFather))
+- API key từ [OpenRouter](https://openrouter.ai/) hoặc [DeepInfra](https://deepinfra.com/)
+- Railway (nên dùng cho nhanh) hoặc server riêng
+
+### 2. Cài đặt & cấu hình
+```bash
+git clone https://github.com/[tài-khoản]/[repo-của-bạn].git
+cd [repo-của-bạn]
+pip install -r requirements.txt
