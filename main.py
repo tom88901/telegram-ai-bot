@@ -1,7 +1,7 @@
-
 import os
 import logging
 import datetime
+import json
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
@@ -10,28 +10,29 @@ from telegram.ext import (
 
 from user_profile import (
     load_profiles, save_profiles, get_profile, update_profile,
-    top_users, top_models
+    top_users, top_models, user_profiles
 )
-from api_logging import log_api
-from model_selection import get_model_keyboard, MODELS
 from api_call import call_ai
+from model_selection import get_model_keyboard
+from api_logging import log_api
 
 BOT_NAME = "mygpt_albot"
 VERSION = "v1.1"
 USAGE_LIMIT = 10
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+USAGE_TRACK_FILE = "data/usage.json"
 usage_counter = {}
 
 def load_usage():
     global usage_counter
-    if os.path.exists("data/usage.json"):
-        with open("data/usage.json", "r") as f:
+    if os.path.exists(USAGE_TRACK_FILE):
+        with open(USAGE_TRACK_FILE, "r") as f:
             usage_counter = json.load(f)
     else:
         usage_counter = {}
 
 def save_usage():
-    with open("data/usage.json", "w") as f:
+    with open(USAGE_TRACK_FILE, "w") as f:
         json.dump(usage_counter, f)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -47,10 +48,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🤖 **Hướng dẫn sử dụng**:\n"
         "- /start: Khởi động lại bot\n"
         "- /reset: Xoá bộ nhớ hội thoại & lượt dùng\n"
-        "- /model: Chọn mô hình AI bạn muốn dùng\n"
+        "- /model: Chọn nguồn AI bạn muốn dùng (OpenRouter/DeepInfra)\n"
+        "- /see: Xem thống kê, top user/model\n"
         "- /userprofile [@username|id] (admin): Xem hồ sơ user\n"
-        "- /useredit [@username|id] [field] [value] (admin): Sửa profile user\n"
-        "- /see: Thống kê hệ thống\n"
+        "- /useredit [@username|id] [field] [value] (admin): Sửa hồ sơ user\n"
+        "- /addkey, /delete, /error (admin): Quản lý API key nếu có\n"
         "- /help: Xem lại hướng dẫn\n"
         "⏱️ Mỗi user tối đa 10 lượt/ngày (admin có thể tăng/giảm)\n"
         "Liên hệ admin nếu cần thêm quyền!"
@@ -65,7 +67,6 @@ async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Đã reset hội thoại và lượt sử dụng cho bạn.")
 
 async def see_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    from user_profile import user_profiles
     total_users = len(user_profiles)
     topu = top_users()
     topm = top_models()
@@ -81,7 +82,7 @@ async def see_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Vui lòng chọn mô hình AI bạn muốn dùng:",
+        "Vui lòng chọn nguồn AI bạn muốn dùng:",
         reply_markup=get_model_keyboard()
     )
 
@@ -92,11 +93,16 @@ async def model_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     model = query.data.replace("model_", "")
     update_profile(user_id, selected_model=model)
     await query.answer()
-    await query.edit_message_text(f"✅ Bạn đã chọn mô hình **{model}**!\nGửi câu hỏi bất kỳ để bắt đầu.")
+    if model == "openrouter":
+        txt = "✅ Bạn đã chọn nguồn: **OpenRouter (GPT-3.5-turbo)**"
+    elif model == "deepinfra":
+        txt = "✅ Bạn đã chọn nguồn: **DeepInfra (Llama 3)**"
+    else:
+        txt = "❌ Lựa chọn không hợp lệ!"
+    await query.edit_message_text(txt, parse_mode="Markdown")
     log_api(user_id, username, model, "model_changed", "ok")
 
 async def userprofile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    from user_profile import user_profiles
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("🚫 Không có quyền.")
         return
@@ -115,14 +121,13 @@ async def userprofile_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"**User profile:**\n"
         f"- Username: {profile.get('username','')}\n"
         f"- Số lượt: {profile.get('usage_count',0)}\n"
-        f"- Model: {profile.get('selected_model',MODELS[0])}\n"
+        f"- Model: {profile.get('selected_model','openrouter')}\n"
         f"- Last active: {profile.get('last_active')}\n"
         f"- API gọi: {profile.get('api_count',0)}"
     )
     await update.message.reply_text(txt, parse_mode="Markdown")
 
 async def useredit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    from user_profile import user_profiles
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("🚫 Không có quyền.")
         return
@@ -150,7 +155,6 @@ async def useredit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Đã cập nhật user {uid} ({field}={value})")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    from user_profile import user_profiles
     user = update.effective_user
     chat_id = str(user.id)
     username = user.username
@@ -170,7 +174,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log_api(chat_id, username, profile['selected_model'], text, "limit")
         return
 
-    model = profile.get("selected_model", MODELS[0])
+    model = profile.get("selected_model", "openrouter")
     messages = [{"role": "user", "content": text}]
 
     try:
