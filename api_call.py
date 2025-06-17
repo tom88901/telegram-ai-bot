@@ -40,13 +40,9 @@ def call_deepinfra(messages):
     return reply, usage
 
 def call_ai(model, messages):
-    # Tuỳ model mà chọn API phù hợp
-    if model == "gpt-3.5-turbo":
+    if model == "openrouter":
         return call_openrouter(messages)
-    elif model.startswith("deepinfra"):
+    elif model == "deepinfra":
         return call_deepinfra(messages)
-    elif model == "gemini-pro":
-        # Tuỳ bạn tích hợp thêm Gemini API sau
-        return "Chưa hỗ trợ Gemini API.", {"total_tokens": 0}
     else:
         return "Model không hợp lệ!", {"total_tokens": 0}
