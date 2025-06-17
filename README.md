@@ -32,6 +32,12 @@ Bot AI Telegram trả lời thông minh, hỗ trợ đa nguồn API, quản lý 
 - Phân quyền admin (ẩn thông tin, bảo mật, thao tác profile, key)
 - Sẵn sàng nâng cấp lên các bản tiếp theo với module rõ ràng
 
+## v1.2 (2025-06-17)
+- Hỗ trợ quản lý API key động cho từng nguồn (OpenRouter, DeepInfra)
+- Lệnh admin: /addkey, /delete, /error, /see hoạt động hoàn chỉnh
+- Tự động đánh dấu key lỗi, tự chuyển sang key tiếp theo khi hết quota
+- Tối ưu hoá khả năng hoạt động liên tục, không gián đoạn
+- Cải tiến cho phép thêm/xoá key trực tiếp trên Telegram
 ---
 
 ## 🌐 **Nguồn lấy API key miễn phí**
