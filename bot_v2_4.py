@@ -51,18 +51,27 @@ def load_keys():
 
 def save_keys():
     with open(KEY_FILE, "w") as f:
-        json.dump({"openrouter": OPENROUTER_API_KEYS, "deepinfra": DEEPINFRA_API_KEYS}, f)
+        json.duimport logging import json import os import requests from datetime import datetime from telegram import Update from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-def log_error(msg):
-    with open(ERROR_LOG_FILE, "a") as f:
-        f.write(f"[{datetime.now()}] {msg}\n")
+--- LẤY TỪ BIẾN MÔI TRƯỜNG ---
 
-def is_admin(user_id):
-    return user_id in ADMIN_IDS
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN") OPENROUTER_API_KEYS = os.getenv("OPENROUTER_API_KEYS", "").split(",") DEEPINFRA_API_KEYS = os.getenv("DEEPINFRA_API_KEYS", "").split(",") admin_env = os.getenv("ADMIN_IDS") ADMIN_IDS = list(map(int, admin_env.split(","))) if admin_env else [] BOT_NAME = "mygpt_albot"
 
-# --- COMMANDS ---
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"🤖 Xin chào! Mình là bot AI `{BOT_NAME}` phiên bản {VERSION}.\nGửi mình câu hỏi bất kỳ nhé!")
+--- CẤU HÌNH ---
+
+VERSION = "v2.4" USAGE_LIMIT = 10 USAGE_TRACK_FILE = "usage.json" MEMORY_FILE_TEMPLATE = "memory_{}.json" conversation_memory = {} usage_counter = {} error_keys = {"openrouter": [], "deepinfra": []}
+
+--- HÀM LƯU / TẢI ---
+
+def load_usage(): global usage_counter if os.path.exists(USAGE_TRACK_FILE): with open(USAGE_TRACK_FILE, "r") as f: usage_counter = json.load(f)
+
+def save_usage(): with open(USAGE_TRACK_FILE, "w") as f: json.dump(usage_counter, f)
+
+def save_memory(chat_id): mem_file = MEMORY_FILE_TEMPLATE.format(chat_id) with open(mem_file, "w") as f: json.dump(conversation_memory.get(chat_id, []), f)
+
+--- COMMANDS ---
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE): user_firstname = update.effective_user.first_name await update.message.reply_text( f"🤖 Xin chào, {user_firstname}! Mình là bot AI {BOT_NAME} dùng OpenRouter & DeepInfra.\nGửi mình câu hỏi nhé!" )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
