@@ -1,14 +1,12 @@
-
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 MODELS = [
-    "gpt-3.5-turbo",
-    "gemini-pro",
-    "deepinfra-llama3"
+    "openrouter",
+    "deepinfra"
 ]
 
 def get_model_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton(model, callback_data=f"model_{model}")]
-        for model in MODELS
+        [InlineKeyboardButton("OpenRouter (GPT-3.5)", callback_data="model_openrouter")],
+        [InlineKeyboardButton("DeepInfra (Llama 3)", callback_data="model_deepinfra")]
     ])
