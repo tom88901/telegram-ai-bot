@@ -23,12 +23,10 @@ def load_keys():
             env_key = os.getenv(env_var[src])
             if env_key and env_key.strip():
                 api_keys[src] = [env_key.strip()]
-                # Ghi ra file luôn để các lần sau sử dụng
                 with open(KEY_FILES[src], "w") as f:
                     json.dump(api_keys[src], f)
             else:
                 api_keys[src] = []
-        # Cập nhật trạng thái key
         api_status[src] = {k: True for k in api_keys[src]}
 
 def save_keys():
@@ -65,9 +63,19 @@ def get_working_key(src):
             return key
     return None
 
-def mark_key_invalid(src, key):
+def mark_key_invalid(src, key, reason_code=None):
+    """Chỉ đánh dấu lỗi nếu mã lỗi là 401, 403, 429"""
     if src in api_status and key in api_status[src]:
-        api_status[src][key] = False
+        if reason_code in [401, 403, 429]:
+            api_status[src][key] = False
+            save_keys()
+
+def reset_all_keys():
+    """Admin: Đặt lại toàn bộ trạng thái key về hoạt động"""
+    for src in api_keys:
+        for key in api_keys[src]:
+            api_status[src][key] = True
+    save_keys()
 
 def get_error_keys():
     msg = []
